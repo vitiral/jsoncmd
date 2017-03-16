@@ -1,7 +1,22 @@
-# json-cmd specification
+## Overview
+These specs allow for a json-cmd program to simultaniously support
+json-cmd shells as well as conventional bash shells, through the reserved
+`--json-cmd` argument.
 
+json-cmd programs receive a single json blob as their options. They also receive
+the input of streaming json through stdin. They output json to other programs
+(or the user) through stdout. Application errors are also output through stdout, with
+return-code values being reserved for critical errors.
+
+stderr uses the jlog format to be easy to parse and view by json-cmd shells.
+
+A number of conventional unix programs (ls, cat, rm, etc) as well as json-cmd
+specific programs are defined as part of this specification for working with
+json-cmd programs similar to how one works with the standard unix shell.
+
+# json-cmd specification
 A command line program is json-cmd compliant if it meets the following
-requirements
+requirements.
 
 ## vocabulary
 The following vocabulary is used
@@ -11,22 +26,22 @@ The following vocabulary is used
 ## Arguments
 Specifications for json-cmd program's arguments:
 - **must** be runnable in a bash compliant shell
-- **must** accept a `--json-cmd JSON` argument, where JSON is a json compliant
+- **must** accept a `--json-cmd JSON` argument, where JSON is a valid json
   string.
 - **must not** accept any other arguments when `--json-cmd` is specified.
     - additional arguments **must** return rc=101 immediately.
-- **must** accept the following arguments, which are reserved:
-    - args: an Array of Values coresponding to the unix "positional arguments"
-    - flags: an Array of Strings corresponding to the unix `-f --flag` syntax
+- **must** accept the following keys to `--json-cmd`, which are reserved:
+    - args: an Array of Values corresponding to the unix "positional arguments"
+    - flags: an Array of Strings corresponding to the unix `-f --flag` like syntax
 - positional arguments **must**:
     - be accepted as a positional argument: `{"args": ["value"]}`
-    - be accepted as a key: `{"name": "value"}` or for short `{"n": "value"}`
-    - All of these inputs **must** be converted to the full form: `{"name": "value"}`
+    - be accepted as a key: `{"arg": "value"}` or shortened `{"a": "value"}`
+    - All of these inputs **must** be converted to the full form of `{"arg": "value"}`
     - attempting to specify multiple **must** cause an error with rc=100
 - flags **must**:
     - be accepted as a key: `{"flag": true}` or `{"f": true}`
-    - be accepted as a flag: `{"flags": ["f"]`
-    - All of these inputs **must** be converted to the full form`{"flag": true}`
+    - be accepted within the `flags` value: `{"flags": ["f"]}`
+    - All of these inputs **must** be converted to the full form: `{"flag": true}`
     - attempting to specify multiple **must** cause an error with rc=100
 - **must** convert an input of a String `"string"` to `{"args": ["string"]}`,
   which will be converted to the full form.
@@ -35,7 +50,6 @@ Specifications for json-cmd program's arguments:
 - **should** accept all unix arguments as key/value pairs in the `JSON` blob.
   - i.e. `ls -al` can instead be called with:
   `ls --json-cmd '{"a": true, "l": true}'`
-
 
 ## stdout
 Specifications for json-cmd program's stdout
