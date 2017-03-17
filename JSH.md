@@ -249,5 +249,9 @@ start = (
     network {"name": name} stdin
 )
 
+-- TODO: how does the service manager know which "name" to use for the function?
+-- probably need some kind of config file or something...?
+-- maybe there is a "root" init file that sources from all the init's and
+-- provides the configuration settings.
 initd::services.append {"start": start, "requires": [kernel::needed_service]}
 ```
