@@ -28,6 +28,8 @@ Specifications for json-cmd program's arguments:
 - **must** be runnable in a bash compliant shell
 - **must** accept a `--json-cmd JSON` argument, where JSON is a valid json
   string.
+- **must** accept a `--json-cmd-types` flag, which returns the input and
+  output types in the format specified in Type Format
 - **must not** accept any other arguments when `--json-cmd` is specified.
     - additional arguments **must** return rc=101 immediately.
 - **must** accept the following keys to `--json-cmd`, which are reserved:
@@ -45,7 +47,7 @@ Specifications for json-cmd program's arguments:
     - attempting to specify multiple **must** cause an error with rc=100
 - **must** convert an input of a String `"string"` to `{"args": ["string"]}`,
   which will be converted to the full form.
-- **must** convert an input of an Array `["f", "a"]` to `{"flags": ["f", "a"]`,
+- **must** convert an input of an Array `["arg0", "arg1"]` to `{"args": ["arg0", "arg1"]}`,
   which will be converted to the full form.
 - **should** accept all unix arguments as key/value pairs in the `JSON` blob.
   - i.e. `ls -al` can instead be called with:
@@ -139,3 +141,30 @@ Libraries **should** support at least three kinds of stdin input handlers:
 
 These are the four main output types of json-cmd programs and cover the vast
 majority of high-performance use case needs.
+
+## Type Specification
+When the `--json-cmd-types` flag is passed, the command must output the type
+in the following format:
+
+```
+{
+    "input": "INPUT_TYPE",
+    "output": "OUTPUT_TYPE"
+}
+```
+
+where the `*_TYPE` values are of the form:
+- `String` for a utf8 valid String
+- `Bytes` for a utf8 string encoded in Base64 that should be converted to bytes.
+- `Int` for integer types
+- `Float` for floating point types
+- `Null` for null types
+- `Optional<TYPE>` for types that may be null (or not exist in a record).
+- `Enum<TYPE1, TYPE2, ...>` if multiple types are valid.
+- `{ "key1": TYPE, "key2": TYPE}` for records
+- `List<TYPE>` for list types.
+    - Can be chained with Optional or Enum to allow multiple types in the List:
+        `List<Enum<String, Number>>`
+- `Any` to completely disable type checking (not recommended).
+- `Log`: shortcut for the json-cmd log type:
+  `List<{"name": "String", "msg": "String", ...}>`
