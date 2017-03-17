@@ -22,7 +22,7 @@ An expression can be:
   `()` to execute. This can be as simple as `"value"` or `123` to as complex as
   `{"foo": [1, 2, 3], "bar": (cmd ["a"])}`
 - an operation, which is expression/s connected with operators
-    `+ - * / % ^`
+    `+ - * / < > % ^`
 
 # Syntax Overview
 We will use the json-cmd versions of the commands `ls` and `rm` for these
@@ -40,11 +40,25 @@ of arrays and makes them a single depth array.
     - `[ rm (p + ".bak") for p in ["foo", "bar"] ]`
     - `[ value for key, value in {"foo": "bar", "bar": "foo" } ]`
 - assigning values: `value = <expression>`
+- piping / spawning processes:
+    - create stdout and stderr pipes: `out, err = << (cmd {})`
+        - discard one or more with `_`: `out, _ = << (cmd {})`
+    - create a pipe directly from a value (note: stderr never output anyway
+      here):
+        `out, _ = << [1, 2, 3]`
+    - pass in a piped value to a new cmd: `(cmd {} << out)`
+    - buffering a pipe into a Value: `y = (<<out)
+    - buffering a pipe's error into a Value: `y = (drain "" << out)["error"]
+    - combine multiple Array pipes:
+      `(flat "" << [(<< out1), (<<out2)])
+      - note: this treats list and String addition types as special and streams
+        "as values are ready" for performance gains. Other types are buffered.
 - if statement: two ways to do the same thing
     - `result = rm (if value ("foo.txt") else ("bar.txt"))
     - `result = if value (rm "foo.txt") else (rm "bar.txt")`
         - this assigns the output of the command to `result`
 - local variables:
     - `result = let x=4, y=7 in (x + y)`
+    - `result = let x, y = [4, 7] in (x + y)`
     - `let ext=".bak" in [ rm (p + ext) for p in ["foo", "bar"] ]`
-    - `[ let x = value[key] in x + ".bak" for (key, value) in record ]`
+    - `[ (let x = value[key] in x + ".bak") for (key, value) in record ]`
