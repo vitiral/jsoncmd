@@ -154,17 +154,17 @@ in the following format:
 ```
 
 where the `*_TYPE` values are of the form:
-- `String` for a utf8 valid String
-- `Bytes` for a utf8 string encoded in Base64 that should be converted to bytes.
+- `Bool` for boolean types
 - `Int` for integer types
 - `Float` for floating point types
+- `String` for a utf8 valid String
+- `Bytes` for a utf8 string encoded in Base64 that should be converted to bytes.
 - `Null` for null types
 - `Optional<TYPE>` for types that may be null (or not exist in a record).
 - `Enum<TYPE1, TYPE2, ...>` if multiple types are valid.
 - `{ "key1": TYPE, "key2": TYPE}` for records
-- `List<TYPE>` for list types.
+- `Array<TYPE>` for list types.
     - Can be chained with Optional or Enum to allow multiple types in the List:
         `List<Enum<String, Number>>`
-- `Any` to completely disable type checking (not recommended).
 - `Log`: shortcut for the json-cmd log type:
   `List<{"name": "String", "msg": "String", ...}>`
