@@ -1,15 +1,14 @@
-json-cmd is a *specification* for how to make command line programs who's input
-and output can be easily filtered and passed to other programs with less
-of the manual text processing that has to be done with conventional bash
-programs.
+json-cmd is a *specification* for how to make command line programs that are
+bash compatible but can be used to make a new shell scripting language that is:
+- easy to write, read and reason about
+- uses strict inferred types to improve reliability
+- easy to work with multiple Streams (and their corresponding processes)
+  and combine their inputs
+- no ambiguous syntax
 
-json-cmd is created with the intent to create a superior shell scripting
-language that has more useful types than just the string type and can draw from
-the wealth of features that json-rpc has given to the web. For details on that,
-see [JSH.md](JSH.md).
-
-The full specification can be found at [SPECIFICATION.md](SPECIFICATION.md).
-The proposed shell scripting language which uses json-cmd can be found at
+The proposed scripting language can be found in [JSH.md](JSH.md) and the
+specification for json-cmd compliant programs is at
+[SPECIFICATION.md](SPECIFICATION.md).
 
 ## Intent
 The command line is a nurturing place for software, giving freedom, simplicity
@@ -26,10 +25,10 @@ regular expressions or "columns" (spaces) to differentiate the different points
 of data.
 
 **json-cmd** was created because there should be a better way -- let's make
-command line programs that adhere to a spec similar to json-rpc. This does *not*
-mean that they *are* json-rpc -- no, it is json-rpc for the command line.
+command line programs that adhere to a spec similar to json-rpc but use inferred
+types to be less error prone.
 
-Data should be easy to filter, combine and form into new data. JSON gives an
-excellent combination of simplicity and value -- it is language agnostic, typed
-and human readable. Let's make a new shell that uses it -- while still allowing
-the programs that are written for the new shell to be 100% bash compatible.
+Data should be easy to filter, combine and form into new data without worrying
+that you made a minor mistake. JSON gives an excellent combination of simplicity
+and value -- it is language agnostic, typed and human readable. Let's make a new
+shell that uses it.
