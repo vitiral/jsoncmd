@@ -17,77 +17,109 @@ The syntax for jsh is NOT bash compliant or even bash like. Instead it it is
 inspired by elm and python with the goal of being able to construct expressive
 one line statements that are unambiguous and easy to read.
 
-It's primary goals are to be:
+> Note:
+>
+> Types are gotten through calling the cmd with `--json-cmd-types`
+>
+> It will also support generic types for functions in the future
 
-# Types
-jsh is a strongly typed language. There are two main types:
-- Value: a resolved JSON value
-- Stream: A Stream of bytes that will resolve to valid JSON and is gotten
-  through the `&` operator.
+## Modules and Scripts
+jsh modules are files which have the extention `.jsh` and contain expressions
+that are only type, function and variable declarations. The method of importing
+modules is in the Example Syntax
 
-Types are gotten through calling the cmd with `--json-cmd-types`
+jsh scripts are executable files which do not have any particular extension, but
+typically begin with:
+```
+#!/usr/bin/jsh
+```
 
-Note that there is an `Any` type which disables type checking.
+From there they have the same syntax as if they were being run in the REPL
+terminal. A newline (in non-closing parenthesis) will cause a statement to be
+"executed".
 
-## Examples
+jsh scripts can be "imported" using the `source` keyword, which can only be used
+in scripts (not in modules).
+```
+x = source "path/to/script"
 
-- reserved keywords:
-    - `in`: used in let, for, match, and Fn declarations
-    - `for`: used in Array and Object comprehensions
-    - `let`: used in declaring local variables
-    - `match`: used in pattern matching
-    - `type`: used in declaring types
-    - `def`: used in declaring functions
-- reserved variables:
-    - `cwd`: the current working directory
-    - `stdin`: streaming type inside functions for the stdin
-- defined types:
-    - `Bool`: a boolean value
-    - `Flag`: a boolean value with default value of false, used for declaring
-      flags in Fn declarations
-    - `Int`: an integer, can be operated with Float
-    - `Float`: equivalent to json Number
-    - `String`: equivalent to json String
-    - `Bytes`: json String encoded in Base64
-    - `Array<TYPE>`: a stream or list of values
-    - `Null`: empty type
-    - `Object`: a key/value pair object where each key has a type. Declared with
-        `{key: TYPE, ...}` syntax
-    - `Enum<TYPES>`: a type composed of multiple types
-    - `Option<Value>`: shorthand for `Enum<Value, Null>`
-- operators: `+ - * ^ / ! && || // &`
-    - `+ - * ^ / && || % !` are the same as they are in C
-        - `+` works on Int+Float, String+String, Array+Array in the expected way
-        - `! && ||` can only be used on boolean values
-    - `//` is the same as python: division that always results in an Int
-    - `&` is the stream operator and toggles whether the value is a Stream or a
-      buffered Value
-- default functions:
-    - `ls`: see unix, outputs `List<String>` by default
-    - `rm`: see unix
-    - `cat`: see unix
-    - ... other standard linux tools modified for jsh
-    - `range [min/max, max, step]`: same api as python's range function
-    - `flatten [array1, array2, ...]`: flattens an array of arrays into a
-        single depth array. The type of this is an Enum of all the types of the
-        inputs.
-    - Object accessors:
-        - `get ["key1", "key2"] Object`: gets keys from an object and returns an
-          Array of their values. Returns `null` for each key that does not exist
-        - `keys {} Object`: accepts an object and returns a List of it's keys
-        - `values {} Object`: accepts an object and returns a Lis of it's values
-    - regexp matching:
-        - `reg-compile String`: compiles a regular expression into it's Bytes representation
-          for faster lookups
-        - `reg-match Enum<String, Bytes> String`: returns true if the String
-          matches the pattern
-        - ... other functions
-    -
+-- source now contains the entire namespace of script
+script_var = x::var
+
+-- dump script's namespace into our own
+* = x::(*)
+```
+
+jsh scripts are still type checked before being executed (along with their
+underlying modules).
+
+## Reserved Keywords
+- `in`: used in let, for, match, and Fn declarations
+- `for`: used in Array and Object comprehensions
+- `let`: used in declaring local variables
+- `match`: used in pattern matching
+- `type`: used in declaring types
+- `def`: used in declaring functions
+- `use`: importing a module
+
+## Defined Types
+- `Bool`: a boolean value
+- `Flag`: a boolean value with default value of false, used for declaring
+  flags in Fn declarations
+- `Int`: an integer, can be operated with Float
+- `Float`: equivalent to json Number
+- `String`: equivalent to json String
+- `Bytes`: json String encoded in Base64
+- `Array<TYPE>`: a stream or list of values
+- `Null`: empty type
+- `Object`: a key/value pair object where each key has a type. Declared with
+    `{key: TYPE, ...}` syntax
+- `Enum<TYPES>`: a type composed of multiple types
+- `Option<Value>`: shorthand for `Enum<Value, Null>`
+- `Stream<Type>`: the stream type.
+
+## Reserved Variables
+- `cwd`: the current working directory
+- `stdin`: Stream type for the stdin (inside function definitions only)
+
+## Operators
+`+ - * ^ / ! && || // &`
+- `+ - * ^ / && || % !` are the same as they are in C
+    - `+` works on Int+Float, Bytes, String+String, Array+Array in the expected way
+    - `+` also works on Streams of Bytes, String and Array by chaining them
+    - `! && ||` can only be used on Bool values
+- `//` is the same as python: division that always results in an Int
+- `&` is the stream operator and toggles whether the value is a Stream or a
+  buffered Value
+
+## Default Functions
+- `ls`: see unix, outputs `List<String>` by default
+- `rm`: see unix
+- `cat`: see unix
+- ... other standard linux tools modified for jsh
+- `range [min/max, max, step]`: same api as python's range function
+- `flatten [array1, array2, ...]`: flattens an array of arrays into a
+    single depth array. The type of this is an Enum of all the types of the
+    inputs.
+- Object accessors:
+    - `get ["key1", "key2"] Object`: gets keys from an object and returns an
+      Array of their values. Returns `null` for each key that does not exist
+    - `keys {} Object`: accepts an object and returns a List of it's keys
+    - `values {} Object`: accepts an object and returns a List of it's values
+- regexp matching:
+    - `reg-compile String`: compiles a regular expression into it's Bytes representation
+      for faster lookups
+    - `reg-match Enum<String, Bytes> String`: returns true if the String
+      matches the pattern
+    - ... other regexp functions
+
+## Example Syntax
 - defining types: `type MyType = { foo: Array<String>, bar: String }`
 - calling a Fn: `grep "pattern" STREAM`
-- assigning to a Value:`v = cmd {}`
-- passing a Value: `cmd v`
-- assigning to a Stream: `s = &cmd {}`
+    - see [json-cmd spec](SPECIFICATION.md) for how the first argument is inferred
+- assigning to a Value: `v = cmd {}`
+- passing a Value to a command: `cmd v`
+- assigning to a Stream from a command: `s = &cmd {}`
     - `s` is now a spawned process who's output is being buffered
 - passing a Stream to a Fn: `cmd {} s`
 - converting a Value to a Stream:
@@ -98,14 +130,14 @@ Note that there is an `Any` type which disables type checking.
 - constructing a Value from Values, Streams and Fns:
     `v = {"foo": "bar", "value": v, "result": (cmd {})}`
     - note: any valid expression can be wrapped in parenthesis. All expressions
-      return a Value
+      return a Value or a Stream
 - list comprehension: `v = [n*10 for n in value]`
     - value can be *either* a `List` or `Stream<List<_>>` type (not String/Bytes)
 - local variables: `v = let x=4, y=7 in [n*x+y for n in (range 10)]`
-- line comment: `x = 4 -- this is a comment`
-- block comment: `x = {- this is a comment -} 4`
+- line comment: `x = 4 -- this is a line comment`
+- block comment: `x = {- this is a block comment -} 4`
 - pattern matching of types where `n` is type `Enum<Int, String>`:
-    `v = match n in Int (n) | String (int n) -- v becomes an Int no matter what`
+    `v = match n in Int (n) | String (int n)`
 - declaring a Fn:
 ```
 def three = { 0 | arg0: String } List<Int> List<String> -- always three types
@@ -128,7 +160,7 @@ def f = (
 
     -- the type of the output
     List<String>)
-
+)
     -- the declaration
 (
     let
@@ -136,9 +168,13 @@ def f = (
         x = 4 + arg1 if flag1 else 0, -- do some complex crap
         y = 7 * kwarg2
     in
-        [(str n*x+y) for n in stdin]
+        [(str n * x + y) for n in stdin]
 )
 ```
+- importing a module: `use mod = "path/to/mod.jsh"
+- unpacking some functions: ` * = mod::[f1, f2]`
+- unpacking and renaming a function: `g = mod::f`
+- unpacking all functions: ` * = mod::[ * ]`
 - accessing a function from a module: `mod::f`
 - accessing a type from a module: `mod::Custom`
 - accessing a type used in a function: `f::Custom`
@@ -151,9 +187,64 @@ def f = (
 - converting and visualizing columns (it uses the type to figure out what you
   want):
     - parsing columns as a `List<List<Enum<String, Float>>>`:
-        `table {} BYTES`
+        ```
+        table {} `bash-cmd`
+        ```
     - formatting columns (with color):
         `table {} [["header", "row"], ["first", "row"]]`
     - doing the whole operation in one line:
-        `table {} (table {} BYTES)`
+        ```
+        table {} (table {} `bash-cmd`)
+        ```
 
+# Use Case: creating an init system
+
+One of the primary use cases for JSH *could* be in creating an init system. To
+do that, we would need at least the following features:
+- Stream and Fn types can be included in native types and passed to native functions
+    - `x = {"echo": (&echo "some/path"), "fn": my_func}`
+    - `out = &x["fn"] x` (in other words, we are passing processes and functions around)
+- methods attached to Array and Object types for mutating them
+- flush out how generic types work
+- The script and module system will probably have to be flushed out more
+
+Once these two things happen, it should be possible to represent all init
+commands as simple data, from which an init function (written in jsh) could
+execute them according to their dependencies/metadata.
+
+An example of the init types might be
+```
+--! init module types
+-- declare the ServiceStart function
+type ServiceStart = (
+    GENERIC
+
+    Int -- kill flag streaming input
+        -- may want to use an Object that has more data
+
+    Null -- no output
+    )
+
+type Service = {
+    "start": ServiceStart,
+    "requires": Array<Service>,
+}
+```
+
+An example init script might be (super experimental)
+```
+#!/usr/bin/jsh
+
+--! init script for starting the network service
+
+start = (
+    { name: String
+    }
+    Int
+    Null
+) (
+    network {"name": name} stdin
+)
+
+initd::services.append {"start": start, "requires": [kernel::needed_service]}
+```
