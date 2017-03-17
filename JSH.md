@@ -237,6 +237,9 @@ An example init script might be (super experimental)
 
 --! init script for starting the network service
 
+source initd = "/dev/init/initd"
+source kernel = "/dev/init/kernel"
+
 start = (
     { name: String
     }
