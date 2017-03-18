@@ -4,8 +4,7 @@ jsh is an *experimental* scripting language in it's design phase who's purpose
 is to use the json-cmd specification to create a language that is:
 - easy to write, read and reason about
 - use strict types to improve reliability
-- easy to work with multiple Streams (and their corresponding processes)
-  and combine their inputs
+- easy to work with multiple processes (Ps) and combine their stdouts
 - no ambiguous syntax
 
 json-cmd guarantees that all input and output is in typed json-format, allowing for
@@ -76,20 +75,25 @@ underlying modules).
     `{key: TYPE, ...}` syntax
 - `Enum<TYPES>`: a type composed of multiple types
 - `Option<Value>`: shorthand for `Enum<Value, Null>`
-- `Stream<Type>`: the stream type.
+- `Ps<Type>`: the process type, which encompasses the typed stdout of a
+  real or fake process.
+- `Fn<Params, Ps, Output>`: function type. This type is special in general
+  as it's definition does not execute the expression given and instead can
+  later be executed. In addition, the `Params` type accepts special
+  syntax and simply injects the values into the defined expression.
 
 ## Reserved Variables
 - `cwd`: the current working directory
-- `stdin`: Stream type for the stdin (inside function definitions only)
+- `stdin`: Ps type for the stdin (inside function definitions only)
 
 ## Operators
 `+ - * ^ / ! && || // &`
 - `+ - * ^ / && || % !` are the same as they are in C
     - `+` works on Int+Float, Bytes, String+String, Array+Array in the expected way
-    - `+` also works on Streams of Bytes, String and Array by chaining them
+    - `+` also works on Ps of Bytes, String and Array by chaining them
     - `! && ||` can only be used on Bool values
 - `//` is the same as python: division that always results in an Int
-- `&` is the stream operator and toggles whether the value is a Stream or a
+- `&` is the stream operator and toggles whether the value is a Ps or a
   buffered Value
 
 ## Default Functions
@@ -114,57 +118,58 @@ underlying modules).
     - ... other regexp functions
 
 ## Example Syntax
-- defining types: `type MyType = { foo: Array<String>, bar: String }`
 - calling a Fn: `grep "pattern" STREAM`
     - see [json-cmd spec](SPECIFICATION.md) for how the first argument is inferred
 - assigning to a Value: `v = cmd {}`
 - passing a Value to a command: `cmd v`
-- assigning to a Stream from a command: `s = &cmd {}`
+- assigning to a Ps from a command: `s = &cmd {}`
     - `s` is now a spawned process who's output is being buffered
-- passing a Stream to a Fn: `cmd {} s`
-- converting a Value to a Stream:
+- passing a Ps to a Fn: `cmd {} s`
+- converting a Value to a Ps:
     - `s = &[1, 2, 3]`
     - `s = &v` where `v` is some Value
-- passing a Stream as a Value (buffering it): `cmd &s`
+- passing a Ps as a Value (buffering it): `cmd &s`
     - note: idea is that `&` toggles "streamness"
-- constructing a Value from Values, Streams and Fns:
+- constructing a Value from Values, Ps and Fns:
     `v = {"foo": "bar", "value": v, "result": (cmd {})}`
     - note: any valid expression can be wrapped in parenthesis. All expressions
-      return a Value or a Stream
+      return a Value or a Ps
 - list comprehension: `v = [n*10 for n in value]`
-    - value can be *either* a `List` or `Stream<List<_>>` type (not String/Bytes)
+    - value can be *either* a `List` or `Ps<List<_>>` type (not String/Bytes)
 - local variables: `v = let x=4, y=7 in [n*x+y for n in (range 10)]`
 - line comment: `x = 4 -- this is a line comment`
 - block comment: `x = {- this is a block comment -} 4`
 - pattern matching of types where `n` is type `Enum<Int, String>`:
     `v = match n in Int (n) | String (int n)`
+- defining types: `type MyType = { foo: Array<String>, bar: String }`
+- defining generics: `type MyType<G> = {foo: Array<G>}`
+- using generics: `x: MyTpe<String> = {foo: ["hello"]}`
+    - note: the generic type can often be inferred
 - declaring a Fn:
 ```
-def three = { 0 | arg0: String } List<Int> List<String> -- always three types
-( [(str n) for n in stdin] )
+three: Fn<{ 0 | arg0: String }, -- "|" is special syntax for positional arg
+          List<Int>,
+          List<String>> = (
+    [(str n) for n in stdin] )
 ```
 - declaring a more complex Fn:
 ```
-def f = (
-    -- the types of the arguments
-    { 0 | arg0: String  -- first positional argument or kwarg=arg0
-    , 1 | arg1: Int     -- second positional argument or kwarg=arg1
-    , f | flag1: Flag   -- flag=f or flag=flag1 or kwarg=f or kwarg=flag1
-    , g | flag2: Flag   -- flag=g or flag=flag2 or kwarg=g or kwarg=flag2
-    , kwarg1: Custom  -- kwarg=kwarg1 which is a custom type
-    , kwarg2: Float   -- kwarg=kwarg2 which is a float
-    }
-
-    -- the type of the stream input
-    List<Int>
-
-    -- the type of the output
-    List<String>)
-)
+def f: Fn<
+        -- the argument types, uses some special syntax for only this
+        { 0 | arg0: String  -- first positional argument or kwarg=arg0
+        , 1 | arg1: Int     -- second positional argument or kwarg=arg1
+        , f | flag1: Flag   -- flag=f or flag=flag1 or kwarg=f or kwarg=flag1
+        , g | flag2: Flag   -- flag=g or flag=flag2 or kwarg=g or kwarg=flag2
+        , kwarg1: Custom  -- kwarg=kwarg1 which is a custom type
+        , kwarg2: Float   -- kwarg=kwarg2 which is a float
+        },
+        -- the type of the stream input
+        List<Int>,
+        -- the type of the output
+        List<String>)> = (
     -- the declaration
-(
     let
-        -- argument types are available as local variables
+        -- note that argument types are available as local variables
         x = 4 + arg1 if flag1 else 0, -- do some complex crap
         y = 7 * kwarg2
     in
@@ -201,7 +206,7 @@ def f = (
 
 One of the primary use cases for JSH *could* be in creating an init system. To
 do that, we would need at least the following features:
-- Stream and Fn types can be included in native types and passed to native functions
+- Ps and Fn types can be included in native types and passed to native functions
     - `x = {"echo": (&echo "some/path"), "fn": my_func}`
     - `out = &x["fn"] x` (in other words, we are passing processes and functions around)
 - methods attached to Array and Object types for mutating them
@@ -216,42 +221,54 @@ An example of the init types might be
 ```
 --! init module types
 -- declare the ServiceStart function
-type ServiceStart = (
-    GENERIC
+type ServiceStart<Params> = Fn<
+        Params,
+        Int, -- kill flag streaming input
+             -- TODO: may want to use an Object that has more data
+        Null> -- no output
 
-    Int -- kill flag streaming input
-        -- may want to use an Object that has more data
-
-    Null -- no output
-    )
-
-type Service = {
-    "start": ServiceStart,
-    "requires": Array<Service>,
+type Service<Params> = {
+    start: ServiceStart<Params>,
+    requires: Array<Service>,
+    params: Params,
 }
 ```
 
-An example init script might be (super experimental)
+An example init module might be defined at "/dev/init/examples/example1.jsh"
+```
+--! example init module
+
+mod init = "/dev/init/init.jsh"
+
+type Params = { name: String }
+start_ex: Fn<Params, Int, Null> = (
+    -- do stuff...
+)
+```
+
+Finally, in the full system configuration you would have
+something like
+
 ```
 #!/usr/bin/jsh
 
---! init script for starting the network service
+-- os's init configuration
+use kernel = "/dev/init/kernel.jsh"
+use example = "/dev/init/examples/example1.jsh"
 
 source initd = "/dev/init/initd"
-source kernel = "/dev/init/kernel"
 
-start = (
-    { name: String
-    }
-    Int
-    Null
-) (
-    network {"name": name} stdin
-)
-
--- TODO: how does the service manager know which "name" to use for the function?
--- probably need some kind of config file or something...?
--- maybe there is a "root" init file that sources from all the init's and
--- provides the configuration settings.
-initd::services.append {"start": start, "requires": [kernel::needed_service]}
+initd::services.extend [
+    {
+        start: kernel::necessary_service_start,
+        requires: [],
+        params: {},
+    },
+    {
+        start: example::start_ex,
+        requires: [kernel::necessary_service_start],
+        params: { name: "example-name" }
+    },
+    -- ... other services
+]
 ```
