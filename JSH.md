@@ -65,17 +65,17 @@ to the function (which includes stdin) and the stdout type of the function.
 Let's start with a simple case
 ```
 -- one line example
-s = &echo {} (&cat "in.txt")
+e = &echo {} (&cat "in.txt")
 ... do stuff with s
 
 -- same as multi line example
 e = &echo {}
 c = &cat "in.txt"
 e << c
-s = e << _
+e << _
 ... do stuff with s
 ```
-- the type of `s` in both cases is now `Ps<String>`. Let's review the
+- the type of `e` in both cases is now `Ps<String>`. Let's review the
   multiline example first for an explanation:
   - the type of echo is `Fn<{...}, String, String>`
   - the type of cat is `<Fn<{0 | path: String}, _, String>`, in other words
@@ -89,11 +89,10 @@ s = e << _
       consumed and can no longer be used)
     - the type of `e` remains `OpenPs<String, String>`, it could still
       receive more stream inputs.
-  - `s = e << _`: this ends the stdin for `s`. The type of `s` is now
-    `Ps<String>` as it is no longer "open"
-- for the single line case, you are passing in the `Ps` for `s` to use when
+- `e << _`: e is now type `Ps<String>` (it's stdin has ended)
+- for the single line case, you are passing in the `Ps` for `e` to use when
   you instantiate it, so the `<< _` is implied (it is implied that you want
-  a `Ps` not a dangling `Fn`.
+  a `Ps` not an `OpenPs`)
 
 Important guarantees that jsh provides:
 - it is illegal in jsh scripts or functions to have unconsumed `Ps` or `OpenPs`
@@ -101,19 +100,19 @@ Important guarantees that jsh provides:
   processes
 - there are two exceptions to this:
     - on the command line you can have open processes
-    - functions can *return* a `Ps` (but not an `OpenPs`)
+    - functions can *return* a `Ps` or `OpenPs`
 
-Chaining functions/processes:
+## Chaining functions/processes:
 ```
 g1 = &grep "foo"        -- filter for lines containing "foo"
 g2 = &grep "bar" g1     -- filter or lines continaing BOTH "bar" and "foo"
                         -- (they have been chained)
-c = &cat "in.txt"       -- create a stream of text
-g2 << &cat "in1.txt"    -- input some text
+
+g2 << &cat "in1.txt"    -- input some text into g2
 g2 << &"\n"             -- input an extra newline just in case
-g2 << &cat "in2.txt"    -- input some more text
-s = e2 << _             -- close our stream and get the stdout Ps
-write "out.txt" s       -- write our result to a file
+g2 << &cat "in2.txt"    -- input some more text into g2
+g2 << _                 -- close the stdin
+write "out.txt" g2      -- write our result to a file
 ```
 The above code "chains" the two `grep` commands together and then inputs BOTH
 "in1.txt" and "int2.txt" into that stream. The output of g1 will be passed into
@@ -155,8 +154,10 @@ can probably guess what this will do: only lines that contain both "foo" and
     defined expression. The syntax is intented to make it easy to define
     functions that are "unix like" and easy to call while still being intuitive.
   - The `Ps` type does not need to be given for the generic types `I` and `O`.
-    You can declare a function type like:
-    `type MyFn = Fn<{...}, String, String>`
+    You can declare a function type like: `type MyFn = Fn<{...}, String, String>`
+  - The `Ps` type can also be an `OpenPs`. In that case, the function will
+    itself return an `OpenPs` where it's Input is the same as the OpenPs given
+    to it.
 - `_`: empty type, cannot occupy a value and discards if assigned to.
     - example: `type Fn<Params, _, _>` defines a function that does NOT accept
       a Ps stream and does NOT output a stream
@@ -350,7 +351,7 @@ something like
 use kernel = "/dev/init/kernel.jsh"
 use example = "/dev/init/examples/example1.jsh"
 
-source initd = "/dev/init/initd"
+source init_data = "/dev/init/init_data"
 
 -- something like this could replace the fstab file
 fs_service = {
@@ -373,13 +374,15 @@ example_service = {
     params: { name: "example-name" },
 }
 
-initd::services.extend [
+init_data::services.extend [
     fs_service,
     example_service,
 ]
 ```
 
 One of the most important aspects of this approach is that everything is *just
-data* (nothing is executed until initd does so). This means that you can load
-the init configuration and make assertions. For instance, it should be invalid
-to have a servie that depends on a service that is not in `initd::services`.
+data* (nothing is executed until the full init service does so). This means that
+you can load the init configuration and make assertions. For instance, it should
+be invalid to have a service that depends on a service that is not in
+`init_data::services`.
+
