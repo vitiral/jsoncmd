@@ -52,6 +52,75 @@ script_var = x::var
 jsh scripts are still type checked before being executed (along with their
 underlying modules).
 
+## Important Guarantees and Concepts
+
+jsh is intended to make working with multiple different running programs less
+error prone. It does this through it's type system and it's compile-time
+guarantees around live instances of the Fn and Ps types.
+
+Function are typed like `Fn<Params, Ps<I>, Ps<O>>` where the three types are
+the Params (the arguments passed to the function), the input Ps (process) "stream"
+to the function (which includes stdin) and the stdout type of the function.
+
+Let's start with a simple case
+```
+-- one line example
+s = &echo {} (&cat "in.txt")
+... do stuff with s
+
+-- same as multi line example
+e = &echo {}
+c = &cat "in.txt"
+e << c
+s = e << _
+... do stuff with s
+```
+- the type of `s` in both cases is now `Ps<String>`. Let's review the
+  multiline example first for an explanation:
+  - the type of echo is `Fn<{...}, String, String>`
+  - the type of cat is `<Fn<{0 | path: String}, _, String>`, in other words
+    it can not accept stdin
+  - `e = echo {}`: the type of `e` is `OpenPs<String, String>`
+    (it can still accept data in it's stdin and is running in the background)
+  - `c = &cat "in.txt"`: the type of `c` is `Ps<String>`. Note that we didn't
+    need to send any stdin because `Input=_`
+  - `e << c`: this has caused several changes
+    - `c` has been passed into `e` and it's type has become `_` (`c` has been
+      consumed and can no longer be used)
+    - the type of `e` remains `OpenPs<String, String>`, it could still
+      receive more stream inputs.
+  - `s = e << _`: this ends the stdin for `s`. The type of `s` is now
+    `Ps<String>` as it is no longer "open"
+- for the single line case, you are passing in the `Ps` for `s` to use when
+  you instantiate it, so the `<< _` is implied (it is implied that you want
+  a `Ps` not a dangling `Fn`.
+
+Important guarantees that jsh provides:
+- it is illegal in jsh scripts or functions to have unconsumed `Ps` or `OpenPs`
+  instances -- in other words you cannot accidentally leave behind unexecuted
+  processes
+- there are two exceptions to this:
+    - on the command line you can have open processes
+    - functions can *return* a `Ps` (but not an `OpenPs`)
+
+Chaining functions/processes:
+```
+g1 = &grep "foo"        -- filter for lines containing "foo"
+g2 = &grep "bar" g1     -- filter or lines continaing BOTH "bar" and "foo"
+                        -- (they have been chained)
+c = &cat "in.txt"       -- create a stream of text
+g2 << &cat "in1.txt"    -- input some text
+g2 << &"\n"             -- input an extra newline just in case
+g2 << &cat "in2.txt"    -- input some more text
+s = e2 << _             -- close our stream and get the stdout Ps
+write "out.txt" s       -- write our result to a file
+```
+The above code "chains" the two `grep` commands together and then inputs BOTH
+"in1.txt" and "int2.txt" into that stream. The output of g1 will be passed into
+g2, which will then be written to "out.txt". If you are familiar with grep, you
+can probably guess what this will do: only lines that contain both "foo" and
+"bar" will be in "out.txt".
+
 ## Reserved Keywords
 - `in`: used in let, for, match, and Fn declarations
 - `for`: used in Array and Object comprehensions
@@ -61,7 +130,7 @@ underlying modules).
 - `def`: used in declaring functions
 - `use`: importing a module
 
-## Defined Types
+## Default Types
 - `Bool`: a boolean value
 - `Flag`: a boolean value with default value of false, used for declaring
   flags in Fn declarations
@@ -75,16 +144,28 @@ underlying modules).
     `{key: TYPE, ...}` syntax
 - `Enum<TYPES>`: a type composed of multiple types
 - `Option<Value>`: shorthand for `Enum<Value, Null>`
-- `Ps<Type>`: the process type, which encompasses the typed stdout of a
+- `Ps<Output>`: the process type, which encompasses the typed stdout of a
   real or fake process.
-- `Fn<Params, Ps, Output>`: function type. This type is special in general
+- `OpenPs<Input, Output>`: a process who's stdin is still "open" -- i.e. it can
+  receive values using the `<<` operator.
+- `Fn<Params, Ps<I>, Ps<O>>`: function type. This type is special in general
   as it's definition does not execute the expression given and instead can
-  later be executed. In addition, the `Params` type accepts special
-  syntax and simply injects the values into the defined expression.
+  later be executed. Some special syntax:
+  - `Params` type accepts special syntax and simply injects the values into the
+    defined expression. The syntax is intented to make it easy to define
+    functions that are "unix like" and easy to call while still being intuitive.
+  - The `Ps` type does not need to be given for the generic types `I` and `O`.
+    You can declare a function type like:
+    `type MyFn = Fn<{...}, String, String>`
+- `_`: empty type, cannot occupy a value and discards if assigned to.
+    - example: `type Fn<Params, _, _>` defines a function that does NOT accept
+      a Ps stream and does NOT output a stream
 
 ## Reserved Variables
 - `cwd`: the current working directory
 - `stdin`: Ps type for the stdin (inside function definitions only)
+- `eoi`: "end of input", used for telling a process with an open input that
+  the input is done
 
 ## Operators
 `+ - * ^ / ! && || // &`
@@ -102,9 +183,6 @@ underlying modules).
 - `cat`: see unix
 - ... other standard linux tools modified for jsh
 - `range [min/max, max, step]`: same api as python's range function
-- `flatten [array1, array2, ...]`: flattens an array of arrays into a
-    single depth array. The type of this is an Enum of all the types of the
-    inputs.
 - Object accessors:
     - `get ["key1", "key2"] Object`: gets keys from an object and returns an
       Array of their values. Returns `null` for each key that does not exist
@@ -125,15 +203,15 @@ underlying modules).
 - assigning to a Ps from a command: `s = &cmd {}`
     - `s` is now a spawned process who's output is being buffered
 - passing a Ps to a Fn: `cmd {} s`
-- converting a Value to a Ps:
+- converting a Value to a "fake" Ps (has no pid, just a stream):
     - `s = &[1, 2, 3]`
     - `s = &v` where `v` is some Value
-- passing a Ps as a Value (buffering it): `cmd &s`
+- passing a Ps as a Value (blocking until done and buffering it): `cmd &s`
     - note: idea is that `&` toggles "streamness"
 - constructing a Value from Values, Ps and Fns:
-    `v = {"foo": "bar", "value": v, "result": (cmd {})}`
+    `v = {"foo": "bar", "ps": &s, "value": v, "result": (cmd {})}`
     - note: any valid expression can be wrapped in parenthesis. All expressions
-      return a Value or a Ps
+      return a Value (even if that value is null)
 - list comprehension: `v = [n*10 for n in value]`
     - value can be *either* a `List` or `Ps<List<_>>` type (not String/Bytes)
 - local variables: `v = let x=4, y=7 in [n*x+y for n in (range 10)]`
@@ -154,13 +232,12 @@ three: Fn<{ 0 | arg0: String }, -- "|" is special syntax for positional arg
 ```
 - declaring a more complex Fn:
 ```
-def f: Fn<
-        -- the argument types, uses some special syntax for only this
+my_func: Fn<
         { 0 | arg0: String  -- first positional argument or kwarg=arg0
         , 1 | arg1: Int     -- second positional argument or kwarg=arg1
         , f | flag1: Flag   -- flag=f or flag=flag1 or kwarg=f or kwarg=flag1
         , g | flag2: Flag   -- flag=g or flag=flag2 or kwarg=g or kwarg=flag2
-        , kwarg1: Custom  -- kwarg=kwarg1 which is a custom type
+        , kwarg1: Custom  -- kwarg=kwarg1 which is some custom type
         , kwarg2: Float   -- kwarg=kwarg2 which is a float
         },
         -- the type of the stream input
@@ -169,11 +246,11 @@ def f: Fn<
         List<String>)> = (
     -- the declaration
     let
-        -- note that argument types are available as local variables
+        -- note that argument types are injected as local variables
         x = 4 + arg1 if flag1 else 0, -- do some complex crap
         y = 7 * kwarg2
     in
-        [(str n * x + y) for n in stdin]
+        [(str n * x + y) for n in stdin] -- `stdin` is also injected
 )
 ```
 - importing a module: `use mod = "path/to/mod.jsh"
@@ -202,16 +279,30 @@ def f: Fn<
         table {} (table {} `bash-cmd`)
         ```
 
+## Chained performance guarantees
+> This section is experimental musings
+
+Let's say you have a function F1, which is outputing to another function F2.
+Let's also say that F1 outputs a lot of data very very quickly but F2 has to
+take time to process each line. An example might be if F1 is `cat` and F2 is
+sending each line to a webserver.
+
+In such a case, you do not want to have to buffer all of F1's data, as that
+could potentially be enourmous (gigabytes or even terrabytes). How can we avoid
+this? Is there some kind of "signal" that can be sent telling F1 to wait?
+
+Hopefully there is some way to tell your stdin stream that you are not ready for
+more data. Maybe tell it your buffer is "full" or something to that effect.
+
 # Use Case: creating an init system
 
 One of the primary use cases for JSH *could* be in creating an init system. To
 do that, we would need at least the following features:
 - Ps and Fn types can be included in native types and passed to native functions
     - `x = {"echo": (&echo "some/path"), "fn": my_func}`
-    - `out = &x["fn"] x` (in other words, we are passing processes and functions around)
+    - `out = &x.fn {} x.echo` (in other words, we are passing processes and
+      functions around)
 - methods attached to Array and Object types for mutating them
-- flush out how generic types work
-- The script and module system will probably have to be flushed out more
 
 Once these two things happen, it should be possible to represent all init
 commands as simple data, from which an init function (written in jsh) could
@@ -220,29 +311,32 @@ execute them according to their dependencies/metadata.
 An example of the init types might be
 ```
 --! init module types
--- declare the ServiceStart function
-type ServiceStart<Params> = Fn<
-        Params,
-        Int, -- kill flag streaming input
-             -- TODO: may want to use an Object that has more data
-        Null> -- no output
+-- declare the ServiceStart type that all services must use
+type ServiceStart<P> = Fn<
+        P,      -- generic params
+        Int,    -- kill flag streaming input
+                -- TODO: may want to use an Object that has more data
+        Null>   -- no output
 
-type Service<Params> = {
-    start: ServiceStart<Params>,
-    requires: Array<Service>,
-    params: Params,
+-- declare the service type for actually defining the service and
+-- it's configuration. Note that the Params `P` are generic
+type Service<P> = {
+    start: ServiceStart<P>,        -- a specific function implementation
+    requires: Array<Service<_>>,   -- accepts objects whos types cannot be used
+                                   -- (they can only be compared/hashed)
+    params: P,
 }
 ```
 
 An example init module might be defined at "/dev/init/examples/example1.jsh"
 ```
---! example init module
+--! example init module (i.e. for starting a networking service)
 
 mod init = "/dev/init/init.jsh"
 
-type Params = { name: String }
-start_ex: Fn<Params, Int, Null> = (
-    -- do stuff...
+type Cmd = { name: String }
+example_start: Fn<Cmd, Int, Null> = (
+    -- do stuff in the function
 )
 ```
 
@@ -258,17 +352,34 @@ use example = "/dev/init/examples/example1.jsh"
 
 source initd = "/dev/init/initd"
 
+-- something like this could replace the fstab file
+fs_service = {
+    start: kernel::fs_start,
+    requires: [kernel::boot_service],   -- maybe not necessary?
+    params: {
+        drives: [
+            {
+                device: "/dev/sda5",    -- use this device path
+                mount: "/",             -- mount as root
+                uuid: "d33df79f-e51e-4a17-acb1-b8f87c01d0d",
+            },
+        ]
+    },
+}
+
+example_service = {
+    start: example::example_start,
+    requires: [fs_service],
+    params: { name: "example-name" },
+}
+
 initd::services.extend [
-    {
-        start: kernel::necessary_service_start,
-        requires: [],
-        params: {},
-    },
-    {
-        start: example::start_ex,
-        requires: [kernel::necessary_service_start],
-        params: { name: "example-name" }
-    },
-    -- ... other services
+    fs_service,
+    example_service,
 ]
 ```
+
+One of the most important aspects of this approach is that everything is *just
+data* (nothing is executed until initd does so). This means that you can load
+the init configuration and make assertions. For instance, it should be invalid
+to have a servie that depends on a service that is not in `initd::services`.
