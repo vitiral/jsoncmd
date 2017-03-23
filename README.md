@@ -1,13 +1,12 @@
-json-cmd is a *specification* for how to make command line programs that are
-bash compatible but can be used to make a new shell scripting language that is:
-- easy to write, read and reason about
-- uses strict inferred types to improve reliability
-- easy to work with multiple Streams (and their corresponding processes)
+jsoncmd is a *specification* for how to make command line programs that are
+bash compatible but can be used from any modern programming language to
+make more programs which use multiple sub-programs:
+- easier write, read and reason about
+- have access to strict inferred types to improve reliability
+- easier to work with multiple Streams (and their corresponding processes)
   and combine their inputs
-- no ambiguous syntax
 
-The proposed scripting language can be found in [JSH.md](JSH.md) and the
-specification for json-cmd compliant programs is at
+The specification for json-cmd compliant programs is at
 [SPECIFICATION.md](SPECIFICATION.md).
 
 ## Intent
